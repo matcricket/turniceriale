@@ -11,10 +11,12 @@
         h1 { margin: 0; font-size: 1.1rem; text-transform: uppercase; }
         .container { padding: 10px; max-width: 900px; margin: auto; }
         
+        /* Navigazione Settimane */
         .nav-settimana { display: flex; justify-content: space-between; align-items: center; background: white; padding: 12px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border: 2px solid var(--rosso); }
         .nav-settimana button { background: var(--rosso); color: white; border: none; padding: 12px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 1.2rem; }
         #range-date { font-weight: bold; color: #333; font-size: 1rem; text-align: center; line-height: 1.2; }
 
+        /* Card Inserimento */
         .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
         input[type="text"] { width: 100%; padding: 15px; border: 2px solid #ddd; border-radius: 10px; box-sizing: border-box; margin: 10px 0; font-size: 18px; outline: none; }
         
@@ -26,15 +28,18 @@
         .t-btn.selected { background: var(--rosso); color: white; border-color: var(--rosso); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
         
         #btn-invia { width: 100%; padding: 20px; background: var(--verde); color: white; border: none; border-radius: 12px; font-size: 18px; font-weight: bold; margin-top: 20px; cursor: pointer; box-shadow: 0 4px 0 #1b5e20; }
+        #btn-invia:active { transform: translateY(2px); box-shadow: 0 2px 0 #1b5e20; }
 
+        /* Tabellone */
         .tabellone-container { overflow-x: auto; background: white; border-radius: 12px; padding: 5px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 10px; }
-        table { width: 100%; border-collapse: collapse; min-width: 600px; }
+        table { width: 100%; border-collapse: collapse; min-width: 650px; }
         th { background: #fdf2f2; color: var(--rosso); font-size: 10px; padding: 10px 5px; border: 1px solid #eee; text-transform: uppercase; }
-        td { border: 1px solid #eee; padding: 5px; vertical-align: top; width: 22%; font-size: 11px; }
+        td { border: 1px solid #eee; padding: 5px; vertical-align: top; width: 21%; font-size: 11px; }
         
         .volontario-tag { background: #fff5f5; border: 1px solid #ffcccc; padding: 4px 6px; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; font-weight: 500; color: #333; }
         .del-btn { color: var(--rosso); font-weight: bold; cursor: pointer; padding-left: 5px; font-size: 16px; }
         
+        /* Loading */
         .loading-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.9); display: none; justify-content: center; align-items: center; z-index: 1000; flex-direction: column; }
         .spinner { border: 4px solid #f3f3f3; border-top: 4px solid var(--rosso); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 10px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -53,17 +58,21 @@
     </div>
 
     <div class="card">
-        <input type="text" id="nome-volontario" placeholder="Tuo Nome e Cognome">
+        <label style="font-weight: bold; color: #666; font-size: 0.9rem;">1. Nome Volontario:</label>
+        <input type="text" id="nome-volontario" placeholder="Nome e Cognome">
+        
+        <label style="font-weight: bold; color: #666; margin-top: 10px; display: block; font-size: 0.9rem;">2. Seleziona i Turni:</label>
         <div id="inserimento-turni"></div>
+        
         <button id="btn-invia" onclick="salvaDisponibilita()">CONFERMA E INVIA</button>
     </div>
 
-    <div style="font-weight: bold; margin-top: 20px;">📅 Tabellone Settimanale:</div>
+    <div style="font-weight: bold; margin-top: 20px; color: #333;">📅 Tabellone Settimanale:</div>
     <div class="tabellone-container">
         <table>
             <thead>
                 <tr>
-                    <th style="width: 12%">Giorno</th>
+                    <th style="width: 15%">Giorno</th>
                     <th>08-14</th>
                     <th>14-20</th>
                     <th>20-00</th>
@@ -80,11 +89,11 @@
     const BASKET = "TurniCeriale2026";
     const API_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET}`;
 
+    // Calcola settimana di OGGI all'avvio
     let dataCorrente = new Date(); 
+    
     let db = {};
     let turniSelezionati = [];
-    
-    // NUOVE FASCE ORARIE
     const fasce = ["08:00-14:00", "14:00-20:00", "20:00-00:00", "00:00-08:00"];
     const nomiGiorni = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
 
@@ -99,20 +108,23 @@
         try {
             const res = await fetch(API_URL);
             if(res.ok) db = await res.json();
+            else db = {};
             renderTutto();
-        } catch(e) { console.log("Errore caricamento"); }
+        } catch(e) { console.log("Database nuovo"); db = {}; renderTutto(); }
         document.getElementById('loader').style.display = 'none';
     }
 
     function renderTutto() {
         const lun = getLunedì(dataCorrente);
         const dom = new Date(lun); dom.setDate(lun.getDate() + 6);
+        
+        // Header Settimana
         const options = { day: 'numeric', month: 'long' };
         document.getElementById('range-date').innerHTML = `Settimana dal<br>${lun.toLocaleDateString('it-IT', options)} al ${dom.toLocaleDateString('it-IT', options)}`;
         
         const settKey = `S_${lun.getDate()}_${lun.getMonth()+1}_${lun.getFullYear()}`;
         
-        // Form inserimento
+        // Render Form
         let htmlIns = "";
         for(let i=0; i<7; i++) {
             let oggi = new Date(lun); oggi.setDate(lun.getDate()+i);
@@ -126,7 +138,7 @@
         }
         document.getElementById('inserimento-turni').innerHTML = htmlIns;
 
-        // Tabellone
+        // Render Tabellone
         let htmlTab = "";
         const datiSett = db[settKey] || [];
         for(let i=0; i<7; i++) {
@@ -155,7 +167,7 @@
 
     async function salvaDisponibilita() {
         const nome = document.getElementById('nome-volontario').value.trim();
-        if(!nome) return alert("Metti il tuo nome!");
+        if(!nome) return alert("Inserisci il tuo nome!");
         if(turniSelezionati.length === 0) return alert("Seleziona almeno un turno!");
 
         const lun = getLunedì(dataCorrente);
@@ -172,7 +184,7 @@
     }
 
     async function cancellaSlot(settKey, idUnivoco) {
-        if(!confirm("Vuoi cancellare questo turno?")) return;
+        if(!confirm("Cancellare questo turno?")) return;
         db[settKey] = db[settKey].filter(v => v.id !== idUnivoco);
         await aggiornaPantry();
     }
@@ -186,7 +198,7 @@
                 body: JSON.stringify(db)
             });
             await caricaDati();
-        } catch(e) { alert("Errore di rete"); }
+        } catch(e) { alert("Errore di connessione"); }
         document.getElementById('loader').style.display = 'none';
     }
 
@@ -196,24 +208,6 @@
         caricaDati();
     }
 
-    caricaDati();
-</script>
-</body>
-</html>
-: JSON.stringify(db)
-            });
-            await caricaDati();
-        } catch(e) { alert("Errore di connessione. Riprova."); }
-        document.getElementById('loader').style.display = 'none';
-    }
-
-    function cambiaSettimana(n) {
-        dataCorrente.setDate(dataCorrente.getDate() + (n*7));
-        turniSelezionati = [];
-        caricaDati();
-    }
-
-    // Inizializza l'app
     caricaDati();
 </script>
 </body>
