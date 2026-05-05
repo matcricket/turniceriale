@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Turni 118 Ceriale</title>
+    <style>
+        :root { --rosso: #d32f2f; --bianco: #fff; --grigio: #f4f4f4; --verde: #2e7d32; }
+        body { font-family: -apple-system, sans-serif; background: var(--grigio); margin: 0; padding-bottom: 50px; -webkit-tap-highlight-color: transparent; }
+        header { background: var(--rosso); color: white; padding: 15px; text-align: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        h1 { margin: 0; font-size: 1.1rem; text-transform: uppercase; }
+        .container { padding: 10px; max-width: 800px; margin: auto; }
+        .nav-settimana { display: flex; justify-content: space-between; align-items: center; background: white; padding: 10px; border-radius: 10px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .nav-settimana button { background: var(--rosso); color: white; border: none; padding: 10px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        #range-date { font-weight: bold; color: var(--rosso); font-size: 1rem; }
+        .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        input[type="text"] { width: 100%; padding: 15px; border: 2px solid #eee; border-radius: 10px; box-sizing: border-box; margin: 10px 0; font-size: 16px; outline: none; }
+        input:focus { border-color: var(--rosso); }
+        .giorno-row { border-bottom: 1px solid #f0f0f0; padding: 12px 0; }
+        .btn-group { display: flex; gap: 5px; margin-top: 8px; }
+        .t-btn { flex: 1; padding: 12px 2px; font-size: 10px; background: #f8f8f8; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; text-align: center; font-weight: bold; transition: 0.2s; }
+        .t-btn.selected { background: var(--rosso); color: white; border-color: var(--rosso); }
+        #btn-invia { width: 100%; padding: 16px; background: var(--verde); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: bold; margin-top: 15px; cursor: pointer; }
+        .tabellone-container { overflow-x: auto; background: white; border-radius: 10px; padding: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; min-width: 400px; }
+        th { background: #fdf2f2; color: var(--rosso); font-size: 10px; padding: 8px; border: 1px solid #eee; text-transform: uppercase; }
+        td { border: 1px solid #eee; padding: 6px; vertical-align: top; width: 30%; font-size: 11px; }
+        .volontario-tag { background: #fff5f5; border: 1px solid #ffcccc; padding: 4px 6px; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; animation: fadeIn 0.3s; }
+        .del-btn { color: var(--rosso); font-weight: bold; cursor: pointer; padding: 0 6px; font-size: 16px; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .loading-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.8); display: none; justify-content: center; align-items: center; z-index: 1000; font-weight: bold; color: var(--rosso); }
+    </style>
+</head>
+<body>
+
+<header><h1>Comitato Ceriale - Turni 118</h1></header>
+<div id="loader" class="loading-overlay">Sincronizzazione dati...</div>
+
+<div class="container">
+    <div class="nav-settimana">
+        <button onclick="cambiaSettimana(-1)">←</button>
+        <span id="range-date">...</span>
+        <button onclick="cambiaSettimana(1)">→</button>
+    </div>
+
+    <div class="card">
+        <input type="text" id="nome-volontario" placeholder="Tuo Nome e Cognome">
+        <div id="inserimento-turni"></div>
+        <button id="btn-invia" onclick="salvaDisponibilita()">SALVA DISPONIBILITÀ</button>
+    </div>
+
+    <div class="tabellone-container">
+        <table>
+            <thead><tr><th>Giorno</th><th>08-14</th><th>14-20</th><th>20-08</th></tr></thead>
+            <tbody id="corpo-tabellone"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const PANTRY_ID = "8f715450-f344-4115-a946-d423d54a9b1d";
+    const BASKET = "TurniCeriale2026";
+    const API_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET}`;
+
+    // Partiamo dalla data odierna del 2026
+    let dataCorrente = new Date();
+    if(dataCorrente.getFullYear() !== 2026) dataCorrente = new Date(2026, 4, 4); 
+    
+    let db = {};
+    let turniSelezionati = [];
+    const fasce = ["08:00-14:00", "14:00-20:00", "20:00-08:00"];
+    const nomiGiorni = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
+
+    function getLunedì(d) {
+        d = new Date(d);
+        let day = d.getDay(), diff = d.getDate() - day + (day == 0 ? -6 : 1);
+        return new Date(d.setDate(diff));
+    }
+
+    async function caricaDati() {
+        document.getElementById('loader').style.display = 'flex';
+        try {
+            const res = await fetch(API_URL);
+            if(res.ok) db = await res.json();
+            renderTutto();
+        } catch(e) { console.log("Database Error"); }
+        document.getElementById('loader').style.display = 'none';
+    }
+
+    function renderTutto() {
+        const lun = getLunedì(dataCorrente);
+        const dom = new Date(lun); dom.setDate(lun.getDate() + 6);
+        document.getElementById('range-date').innerText = `${lun.toLocaleDateString('it-IT')} - ${dom.toLocaleDateString('it-IT')}`;
+        
+        const settKey = `S_${lun.getDate()}_${lun.getMonth()+1}_${lun.getFullYear()}`;
+        
+        let htmlIns = "";
+        for(let i=0; i<7; i++) {
+            let oggi = new Date(lun); oggi.setDate(lun.getDate()+i);
+            let dStr = oggi.toLocaleDateString('it-IT', {day:'2-digit', month:'2-digit'});
+            htmlIns += `<div class="giorno-row">
+                <span style="font-weight:bold; font-size:13px">${nomiGiorni[i]} ${dStr}</span>
+                <div class="btn-group">
+                    ${fasce.map((f, idx) => `<div class="t-btn" id="btn-${i}-${idx}" onclick="toggleTurno(${i}, ${idx}, '${dStr} ${f}')">${f}</div>`).join('')}
+                </div>
+            </div>`;
+        }
+        document.getElementById('inserimento-turni').innerHTML = htmlIns;
+
+        let htmlTab = "";
+        const datiSett = db[settKey] || [];
+        for(let i=0; i<7; i++) {
+            let oggi = new Date(lun); oggi.setDate(lun.getDate()+i);
+            let dStr = oggi.toLocaleDateString('it-IT', {day:'2-digit', month:'2-digit'});
+            htmlTab += `<tr><td><strong>${nomiGiorni[i].substring(0,3)}</strong><br>${dStr}</td>`;
+            fasce.forEach(f => {
+                let cellId = `${dStr} ${f}`;
+                let chiCe = datiSett.filter(v => v.turno === cellId);
+                htmlTab += `<td>${chiCe.map(v => `
+                    <div class="volontario-tag">
+                        <span>${v.nome}</span> <span class="del-btn" onclick="cancellaSlot('${settKey}', '${v.id}')">×</span>
+                    </div>`).join('')}</td>`;
+            });
+            htmlTab += `</tr>`;
+        }
+        document.getElementById('corpo-tabellone').innerHTML = htmlTab;
+    }
+
+    function toggleTurno(g, f, label) {
+        const el = document.getElementById(`btn-${g}-${f}`);
+        el.classList.toggle('selected');
+        if(el.classList.contains('selected')) turniSelezionati.push(label);
+        else turniSelezionati = turniSelezionati.filter(t => t !== label);
+    }
+
+    async function salvaDisponibilita() {
+        const nome = document.getElementById('nome-volontario').value.trim();
+        if(!nome || turniSelezionati.length === 0) return alert("Inserisci nome e seleziona i turni!");
+
+        const lun = getLunedì(dataCorrente);
+        const settKey = `S_${lun.getDate()}_${lun.getMonth()+1}_${lun.getFullYear()}`;
+        if(!db[settKey]) db[settKey] = [];
+
+        turniSelezionati.forEach(t => {
+            db[settKey].push({ id: Math.random().toString(36).substr(2, 9), nome: nome, turno: t });
+        });
+
+        await aggiornaPantry();
+        turniSelezionati = [];
+        document.getElementById('nome-volontario').value = "";
+    }
+
+    async function cancellaSlot(settKey, idUnivoco) {
+        db[settKey] = db[settKey].filter(v => v.id !== idUnivoco);
+        await aggiornaPantry();
+    }
+
+    async function aggiornaPantry() {
+        document.getElementById('loader').style.display = 'flex';
+        await fetch(API_URL, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(db)
+        });
+        caricaDati();
+    }
+
+    function cambiaSettimana(n) {
+        dataCorrente.setDate(dataCorrente.getDate() + (n*7));
+        turniSelezionati = [];
+        caricaDati();
+    }
+
+    caricaDati();
+</script>
+</body>
+</html>
